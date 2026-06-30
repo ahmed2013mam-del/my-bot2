@@ -38,8 +38,8 @@ function saveDB() {
   fs.writeFileSync(FILE, JSON.stringify(db, null, 2));
 }
 
-// ================= SPAM SYSTEM (NEW ADD ONLY) =================
-const spamMap = new Map();
+// ================= 🔥 NEW ONLY ADD (GREETING SYSTEM) =================
+const greetCooldown = new Map();
 
 // ================= HELPERS =================
 function isServerOwner(message) {
@@ -67,50 +67,27 @@ client.once("ready", () => {
 client.on("messageCreate", async (message) => {
   if (!message.guild || message.author.bot) return;
 
-  const prefix = PREFIXES.find(p => message.content.startsWith(p));
-  if (!prefix) return;
-
-  const args = message.content.slice(prefix.length).trim().split(/ +/);
-  const cmd = args.shift().toLowerCase();
-
-  // ================= 🔥 ANTI SPAM (NEW ADD ONLY) =================
   const userId = message.author.id;
   const now = Date.now();
 
-  if (!spamMap.has(userId)) {
-    spamMap.set(userId, []);
-  }
-
-  const timestamps = spamMap.get(userId);
-  const filtered = timestamps.filter(t => now - t < 5000);
-
-  filtered.push(now);
-  spamMap.set(userId, filtered);
-
-  if (filtered.length >= 5) {
-    const member = message.member;
-
-    if (member && member.moderatable) {
-      await member.timeout(5 * 60 * 1000, "Anti-Spam");
-    }
-
-    spamMap.set(userId, []);
-
-    return message.reply("⛔ لا تسوي سبام (تايم 5 دقائق)");
-  }
-
-  // ================= 💬 AUTO REPLY (NEW ADD ONLY) =================
-  if (message.content === "السلام عليكم") {
-    const last = spamMap.get(userId + "_reply") || 0;
+  // ================= 💬 GREETING SYSTEM (ONLY ADD) =================
+  if (message.content.trim() === "السلام عليكم") {
+    const last = greetCooldown.get(userId) || 0;
 
     if (now - last < 5 * 60 * 1000) return;
 
-    spamMap.set(userId + "_reply", now);
+    greetCooldown.set(userId, now);
 
     return message.reply(
       "وعــلــيـكم الــســلــام نــورت/ي الــســيــرفــر❤"
     );
   }
+
+  const prefix = PREFIXES.find(p => message.content.startsWith(p));
+  if (!prefix) return;
+
+  const args = message.content.slice(prefix.length).trim().split(/ +/);
+  const cmd = args.shift().toLowerCase();
 
   // ================= PERMISSION =================
   if (!canUse(message) && cmd !== "help") {

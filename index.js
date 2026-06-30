@@ -26,9 +26,8 @@ const client = new Client({
 const PREFIXES = ["!", "?"];
 
 const OWNER_ID = "1087144363219484683";
-const CONTROL_GUILD = "1521376881746907177";
 
-// ================= ADMIN DB =================
+// ================= DATABASE =================
 const FILE = "./admins.json";
 
 let db = fs.existsSync(FILE)
@@ -67,63 +66,59 @@ client.on("messageCreate", async (message) => {
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
 
-  // ================= HELP =================
-  if (cmd === "help") {
-    const embed = new EmbedBuilder()
-      .setTitle("📖 Bot Help")
-      .setColor(0x2b2d31)
-      .addFields(
-        { name: "Moderation", value: "`ban` `kick`" },
-        { name: "Tools", value: "`bc` `cch` `cct` `cct-ch`" },
-        { name: "Roles", value: "`crl` `crlmulti`" },
-        { name: "Server", value: "`chname` `chphoto`" },
-        { name: "Admin", value: "`addadmin` `rmvadmin`" }
-      );
-
-    return message.channel.send({ embeds: [embed] });
-  }
-
-  // ================= OWNER ONLY CHECK =================
-  const ownerOnly = ["addadmin", "rmvadmin", "offbot", "hardware", "ramoff", "lvserver"];
-
-  if (ownerOnly.includes(cmd) && message.author.id !== OWNER_ID) {
-    return message.reply("❌ هذا الأمر مخصص لمالك البوت فقط");
+  // ================= PERMISSION CHECK =================
+  if (!canUse(message) && !["addadmin", "listad"].includes(cmd)) {
+    return message.reply("❌ لا تملك صلاحية");
   }
 
   // ================= ADD ADMIN =================
   if (cmd === "addadmin") {
-    if (message.guild.id !== CONTROL_GUILD)
-      return message.reply("❌ هذا الأمر يعمل فقط في سيرفر التحكم");
+    if (message.author.id !== OWNER_ID)
+      return message.reply("❌ هذا الأمر لمالك البوت فقط");
 
     const user = message.mentions.users.first();
     if (!user) return message.reply("منشن شخص");
 
-    if (!db[message.guild.id]) db[message.guild.id] = [];
+    const guildId = message.guild.id;
 
-    if (!db[message.guild.id].includes(user.id))
-      db[message.guild.id].push(user.id);
+    if (!db[guildId]) db[guildId] = [];
 
-    saveDB();
+    if (!db[guildId].includes(user.id)) {
+      db[guildId].push(user.id);
+      saveDB();
+    }
 
-    return message.reply(`✅ Admin Added: ${user.tag}`);
+    return message.reply(`✅ تم إضافة ${user.tag} أدمن في هذا السيرفر`);
   }
 
-  // ================= REMOVE ADMIN =================
-  if (cmd === "rmvadmin") {
-    const user = message.mentions.users.first();
-    if (!user) return message.reply("منشن شخص");
+  // ================= LIST ADMINS =================
+  if (cmd === "listad") {
+    const guildId = message.guild.id;
 
-    db[message.guild.id] =
-      (db[message.guild.id] || []).filter(id => id !== user.id);
+    const admins = db[guildId] || [];
 
-    saveDB();
+    if (admins.length === 0) {
+      return message.reply("❌ لا يوجد أدمنز في هذا السيرفر");
+    }
 
-    return message.reply(`❌ Admin Removed: ${user.tag}`);
-  }
+    const list = await Promise.all(
+      admins.map(async (id) => {
+        try {
+          const user = await client.users.fetch(id);
+          return `👤 ${user.tag} (${user.id})`;
+        } catch {
+          return `👤 Unknown (${id})`;
+        }
+      })
+    );
 
-  // ================= PERMISSION =================
-  if (!canUse(message)) {
-    return message.reply("❌ لا تملك صلاحية");
+    const embed = new EmbedBuilder()
+      .setTitle("📋 Admin List")
+      .setColor(0x2b2d31)
+      .setDescription(list.join("\n"))
+      .setFooter({ text: `Total: ${admins.length}` });
+
+    return message.channel.send({ embeds: [embed] });
   }
 
   // ================= BAN =================
@@ -158,77 +153,49 @@ client.on("messageCreate", async (message) => {
     return message.reply("📢 تم الإرسال");
   }
 
-  // ================= CREATE ROLE =================
-  if (cmd === "crl") {
-    const color = args[0];
-    const name = args.slice(1).join(" ");
+  // ================= CREATE CHANNEL =================
+  if (cmd === "cch") {
+    const name = args.join("-");
+    if (!name) return message.reply("اكتب اسم");
 
-    if (!color || !name)
-      return message.reply("!crl red owner");
-
-    const role = await message.guild.roles.create({
+    await message.guild.channels.create({
       name,
-      color: color.toUpperCase()
+      type: ChannelType.GuildText
     });
 
-    return message.reply(`✅ Role Created: ${role.name}`);
+    return message.reply("✅ تم إنشاء روم");
   }
 
-  // ================= MULTI ROLES =================
-  if (cmd === "crlmulti") {
-    const count = parseInt(args[0]);
-    const name = args.slice(1).join(" ");
-
-    if (!count || !name)
-      return message.reply("!crlmulti 5 staff");
-
-    for (let i = 1; i <= count; i++) {
-      await message.guild.roles.create({
-        name: `${name} ${i}`
-      });
-    }
-
-    return message.reply("✅ Done");
-  }
-
-  // ================= SERVER NAME =================
-  if (cmd === "chname") {
+  // ================= CREATE CATEGORY =================
+  if (cmd === "cct") {
     const name = args.join(" ");
     if (!name) return message.reply("اكتب اسم");
 
-    await message.guild.setName(name);
-    return message.reply("✅ Changed");
+    await message.guild.channels.create({
+      name,
+      type: ChannelType.GuildCategory
+    });
+
+    return message.reply("📁 تم إنشاء كاتاجوري");
   }
 
-  // ================= SERVER ICON =================
-  if (cmd === "chphoto") {
-    const url = args[0];
-    if (!url) return message.reply("حط رابط صورة");
+  // ================= CREATE CAT + CHANNEL =================
+  if (cmd === "cct-ch") {
+    const input = args.join(" ");
+    const [cat, room] = input.split("|");
 
-    await message.guild.setIcon(url);
-    return message.reply("✅ Changed Icon");
-  }
+    const category = await message.guild.channels.create({
+      name: cat || "category",
+      type: ChannelType.GuildCategory
+    });
 
-  // ================= OWNER COMMANDS =================
-  if (cmd === "offbot") {
-    process.exit();
-  }
+    await message.guild.channels.create({
+      name: (room || "room").toLowerCase(),
+      type: ChannelType.GuildText,
+      parent: category.id
+    });
 
-  if (cmd === "hardware") {
-    return message.reply("🛠️ Maintenance Mode");
-  }
-
-  if (cmd === "ramoff") {
-    return message.reply("⛔ Shutdown Mode");
-  }
-
-  if (cmd === "lvserver") {
-    const id = args[0];
-    const guild = client.guilds.cache.get(id);
-    if (!guild) return message.reply("Not Found");
-
-    await guild.leave();
-    return message.reply("🚪 Left Server");
+    return message.reply("✅ تم إنشاء كاتاجوري + روم");
   }
 });
 

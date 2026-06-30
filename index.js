@@ -9,7 +9,7 @@ const express = require("express");
 const fs = require("fs");
 
 const app = express();
-app.get("/", (req, res) => res.send("NexusCore Online"));
+app.get("/", (req, res) => res.send("Bot Online"));
 app.listen(process.env.PORT || 3000);
 
 // ================= CLIENT =================
@@ -23,43 +23,29 @@ const client = new Client({
 });
 
 // ================= CONFIG =================
-const prefixes = ["!", "?"];
-
-const CONTROL_GUILD_ID = "1521376881746907177";
+const PREFIXES = ["!", "?"];
 const OWNER_ID = "1087144363219484683";
+const CONTROL_GUILD = "1521376881746907177";
 
-let botState = "online";
+// ================= ADMINS DB =================
+const FILE = "./admins.json";
+let db = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE)) : {};
 
-// ================= PERSISTENT ADMINS =================
-const ADMIN_FILE = "./admins.json";
-
-function loadAdmins() {
-  if (!fs.existsSync(ADMIN_FILE)) return {};
-  return JSON.parse(fs.readFileSync(ADMIN_FILE, "utf8"));
+function saveDB() {
+  fs.writeFileSync(FILE, JSON.stringify(db, null, 2));
 }
-
-function saveAdmins(data) {
-  fs.writeFileSync(ADMIN_FILE, JSON.stringify(data, null, 2));
-}
-
-let guildAdmins = loadAdmins();
 
 // ================= HELPERS =================
-function isOwner(message) {
-  return message.author.id === OWNER_ID;
+function isOwner(msg) {
+  return msg.author.id === OWNER_ID;
 }
 
-function isAdmin(message) {
-  const admins = guildAdmins[message.guild.id];
-  return admins?.includes(message.author.id);
+function isAdmin(msg) {
+  return (db[msg.guild.id] || []).includes(msg.author.id);
 }
 
-function canUse(message) {
-  return message.guild.ownerId === message.author.id || isAdmin(message);
-}
-
-function getMe(guild) {
-  return guild.members.me || guild.members.cache.get(client.user.id);
+function canUse(msg) {
+  return isOwner(msg) || isAdmin(msg);
 }
 
 // ================= READY =================
@@ -67,101 +53,32 @@ client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// ================= LOG JOIN =================
-client.on("guildCreate", async (guild) => {
-  const logGuild = client.guilds.cache.get(CONTROL_GUILD_ID);
-  if (!logGuild) return;
-
-  const me = getMe(logGuild);
-  if (!me) return;
-
-  const channel =
-    logGuild.systemChannel ||
-    logGuild.channels.cache.find(c =>
-      c.type === ChannelType.GuildText &&
-      c.permissionsFor(me)?.has("SendMessages")
-    );
-
-  if (!channel) return;
-
-  const embed = new EmbedBuilder()
-    .setTitle("📥 Joined Server")
-    .setColor(0x00ff99)
-    .addFields(
-      { name: "Name", value: guild.name, inline: true },
-      { name: "ID", value: guild.id, inline: true }
-    )
-    .setTimestamp();
-
-  channel.send({ embeds: [embed] }).catch(() => {});
-});
-
-// ================= LOG LEAVE =================
-client.on("guildDelete", async (guild) => {
-  const logGuild = client.guilds.cache.get(CONTROL_GUILD_ID);
-  if (!logGuild) return;
-
-  const me = getMe(logGuild);
-  if (!me) return;
-
-  const channel =
-    logGuild.systemChannel ||
-    logGuild.channels.cache.find(c =>
-      c.type === ChannelType.GuildText &&
-      c.permissionsFor(me)?.has("SendMessages")
-    );
-
-  if (!channel) return;
-
-  const embed = new EmbedBuilder()
-    .setTitle("📤 Left Server")
-    .setColor(0xff0000)
-    .addFields(
-      { name: "Name", value: guild.name, inline: true },
-      { name: "ID", value: guild.id, inline: true }
-    )
-    .setTimestamp();
-
-  channel.send({ embeds: [embed] }).catch(() => {});
-});
-
 // ================= MESSAGE =================
 client.on("messageCreate", async (message) => {
-  if (message.author.bot || !message.guild) return;
+  if (!message.guild || message.author.bot) return;
 
-  const prefix = prefixes.find(p => message.content.startsWith(p));
+  const prefix = PREFIXES.find(p => message.content.startsWith(p));
   if (!prefix) return;
 
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
 
-  const isControl = message.guild.id === CONTROL_GUILD_ID;
-
-  // ================= BLOCK STATES =================
-  if (botState === "off" && !isOwner(message))
-    return message.reply("⛔ البوت متوقف");
-
-  if (botState === "maintenance" && !isOwner(message))
-    return message.reply("🛠️ البوت في صيانة");
-
   // ================= HELP =================
   if (cmd === "help") {
     const embed = new EmbedBuilder()
-      .setTitle("📖 NexusCore Help")
+      .setTitle("📖 Bot Help")
       .setColor(0x2b2d31)
-      .setDescription("Developed by Row Studio")
       .addFields(
-        { name: "🛡️ Moderation", value: "`ban` `kick`" },
-        { name: "📢 Broadcast", value: "`bc`" },
-        { name: "🏗️ Create", value: "`cch` `cct` `cct-ch`" },
-        { name: "🎨 Roles", value: "`crl` `crlmulti`" },
-        { name: "⚙️ Server", value: "`chname` `chphoto`" },
-        { name: "👑 Admin", value: "`addadmin` `rmvadmin`" }
+        { name: "Moderation", value: "`ban` `kick`" },
+        { name: "Tools", value: "`bc` `cch` `cct` `cct-ch`" },
+        { name: "Roles", value: "`crl` `crlmulti`" },
+        { name: "Server", value: "`chname` `chphoto`" },
+        { name: "Admin", value: "`addadmin` `rmvadmin`" }
       );
 
-    if (isControl) {
+    if (isOwner(message)) {
       embed.addFields({
-        name: "👑 Control",
+        name: "⚙️ Owner Only",
         value: "`offbot` `hardware` `ramoff` `lvserver`"
       });
     }
@@ -169,54 +86,40 @@ client.on("messageCreate", async (message) => {
     return message.channel.send({ embeds: [embed] });
   }
 
-  // ================= ADMIN ADD =================
+  // ================= ADMIN SYSTEM =================
   if (cmd === "addadmin") {
     if (!isOwner(message))
-      return message.reply("❌ للأونر فقط");
+      return message.reply("❌ فقط المالك");
 
     const user = message.mentions.users.first();
-    if (!user) return message.reply("❌ منشن شخص");
+    if (!user) return message.reply("منشن شخص");
 
-    if (!guildAdmins[message.guild.id])
-      guildAdmins[message.guild.id] = [];
+    if (!db[message.guild.id]) db[message.guild.id] = [];
 
-    if (!guildAdmins[message.guild.id].includes(user.id))
-      guildAdmins[message.guild.id].push(user.id);
+    if (!db[message.guild.id].includes(user.id))
+      db[message.guild.id].push(user.id);
 
-    saveAdmins(guildAdmins);
-
-    return message.reply(`✅ Added Admin: ${user.tag}`);
+    saveDB();
+    return message.reply(`✅ Admin Added: ${user.tag}`);
   }
 
-  // ================= ADMIN REMOVE =================
   if (cmd === "rmvadmin") {
     if (!isOwner(message))
-      return message.reply("❌ للأونر فقط");
+      return message.reply("❌ فقط المالك");
 
     const user = message.mentions.users.first();
-    if (!user) return message.reply("❌ منشن شخص");
+    if (!user) return message.reply("منشن شخص");
 
-    guildAdmins[message.guild.id] =
-      (guildAdmins[message.guild.id] || []).filter(id => id !== user.id);
+    db[message.guild.id] =
+      (db[message.guild.id] || []).filter(id => id !== user.id);
 
-    saveAdmins(guildAdmins);
-
-    return message.reply(`❌ Removed Admin: ${user.tag}`);
+    saveDB();
+    return message.reply(`❌ Admin Removed: ${user.tag}`);
   }
 
-  // ================= PERMISSION CHECK =================
+  // ================= PERMISSION =================
   if (!canUse(message))
     return message.reply("❌ لا تملك صلاحية");
-
-  // ================= KICK =================
-  if (cmd === "kick") {
-    const user = message.mentions.members.first();
-    if (!user) return message.reply("منشن شخص");
-    if (!user.kickable) return message.reply("❌ لا يمكن طرده");
-
-    await user.kick();
-    return message.reply("👢 تم الطرد");
-  }
 
   // ================= BAN =================
   if (cmd === "ban") {
@@ -226,6 +129,16 @@ client.on("messageCreate", async (message) => {
 
     await user.ban();
     return message.reply("🔨 تم الحظر");
+  }
+
+  // ================= KICK =================
+  if (cmd === "kick") {
+    const user = message.mentions.members.first();
+    if (!user) return message.reply("منشن شخص");
+    if (!user.kickable) return message.reply("❌ لا يمكن طرده");
+
+    await user.kick();
+    return message.reply("👢 تم الطرد");
   }
 
   // ================= BC =================
@@ -240,13 +153,13 @@ client.on("messageCreate", async (message) => {
     return message.reply("📢 تم الإرسال");
   }
 
-  // ================= CRL =================
+  // ================= CREATE ROLE =================
   if (cmd === "crl") {
     const color = args[0];
     const name = args.slice(1).join(" ");
 
     if (!color || !name)
-      return message.reply("!crl red المؤسس");
+      return message.reply("!crl red owner");
 
     const role = await message.guild.roles.create({
       name,
@@ -256,13 +169,13 @@ client.on("messageCreate", async (message) => {
     return message.reply(`✅ Role Created: ${role.name}`);
   }
 
-  // ================= CRLMULTI =================
+  // ================= MULTI ROLES =================
   if (cmd === "crlmulti") {
     const count = parseInt(args[0]);
     const name = args.slice(1).join(" ");
 
     if (!count || !name)
-      return message.reply("!crlmulti 5 Staff");
+      return message.reply("!crlmulti 5 staff");
 
     for (let i = 1; i <= count; i++) {
       await message.guild.roles.create({
@@ -273,7 +186,7 @@ client.on("messageCreate", async (message) => {
     return message.reply("✅ Done");
   }
 
-  // ================= CHNAME =================
+  // ================= SERVER NAME =================
   if (cmd === "chname") {
     const name = args.join(" ");
     if (!name) return message.reply("اكتب اسم");
@@ -282,50 +195,37 @@ client.on("messageCreate", async (message) => {
     return message.reply("✅ Changed");
   }
 
-  // ================= CHPHOTO =================
+  // ================= SERVER ICON =================
   if (cmd === "chphoto") {
     const url = args[0];
-    if (!url) return message.reply("ضع رابط الصورة");
+    if (!url) return message.reply("حط رابط");
 
     await message.guild.setIcon(url);
     return message.reply("✅ Changed Icon");
   }
 
-  // ================= OFFBOT =================
+  // ================= OWNER COMMANDS =================
   if (cmd === "offbot") {
-    if (!isOwner(message))
-      return message.reply("❌ فقط المالك");
-
-    botState = "off";
-    return message.reply("⛔ Stopped");
+    if (!isOwner(message)) return;
+    process.exit();
   }
 
-  // ================= HARDWARE =================
   if (cmd === "hardware") {
-    if (!isOwner(message))
-      return message.reply("❌ فقط المالك");
-
-    botState = "maintenance";
-    return message.reply("🛠️ Maintenance");
+    if (!isOwner(message)) return;
+    return message.reply("🛠️ Maintenance Mode");
   }
 
-  // ================= RAMOFF =================
   if (cmd === "ramoff") {
-    if (!isOwner(message))
-      return message.reply("❌ فقط المالك");
-
-    botState = "off";
-    return message.reply("🔴 Shutdown");
+    if (!isOwner(message)) return;
+    return message.reply("⛔ Shutdown Mode");
   }
 
-  // ================= LVSERVER =================
   if (cmd === "lvserver") {
-    if (!isOwner(message))
-      return message.reply("❌ فقط المالك");
+    if (!isOwner(message)) return;
 
     const id = args[0];
     const guild = client.guilds.cache.get(id);
-    if (!guild) return message.reply("❌ Not found");
+    if (!guild) return message.reply("Not Found");
 
     await guild.leave();
     return message.reply("🚪 Left Server");

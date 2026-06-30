@@ -24,12 +24,16 @@ const client = new Client({
 
 // ================= CONFIG =================
 const PREFIXES = ["!", "?"];
+
 const OWNER_ID = "1087144363219484683";
 const CONTROL_GUILD = "1521376881746907177";
 
-// ================= ADMINS DB =================
+// ================= ADMIN DB =================
 const FILE = "./admins.json";
-let db = fs.existsSync(FILE) ? JSON.parse(fs.readFileSync(FILE)) : {};
+
+let db = fs.existsSync(FILE)
+  ? JSON.parse(fs.readFileSync(FILE))
+  : {};
 
 function saveDB() {
   fs.writeFileSync(FILE, JSON.stringify(db, null, 2));
@@ -76,20 +80,20 @@ client.on("messageCreate", async (message) => {
         { name: "Admin", value: "`addadmin` `rmvadmin`" }
       );
 
-    if (isOwner(message)) {
-      embed.addFields({
-        name: "⚙️ Owner Only",
-        value: "`offbot` `hardware` `ramoff` `lvserver`"
-      });
-    }
-
     return message.channel.send({ embeds: [embed] });
   }
 
-  // ================= ADMIN SYSTEM =================
+  // ================= OWNER ONLY CHECK =================
+  const ownerOnly = ["addadmin", "rmvadmin", "offbot", "hardware", "ramoff", "lvserver"];
+
+  if (ownerOnly.includes(cmd) && message.author.id !== OWNER_ID) {
+    return message.reply("❌ هذا الأمر مخصص لمالك البوت فقط");
+  }
+
+  // ================= ADD ADMIN =================
   if (cmd === "addadmin") {
-    if (!isOwner(message))
-      return message.reply("❌ فقط المالك");
+    if (message.guild.id !== CONTROL_GUILD)
+      return message.reply("❌ هذا الأمر يعمل فقط في سيرفر التحكم");
 
     const user = message.mentions.users.first();
     if (!user) return message.reply("منشن شخص");
@@ -100,13 +104,12 @@ client.on("messageCreate", async (message) => {
       db[message.guild.id].push(user.id);
 
     saveDB();
+
     return message.reply(`✅ Admin Added: ${user.tag}`);
   }
 
+  // ================= REMOVE ADMIN =================
   if (cmd === "rmvadmin") {
-    if (!isOwner(message))
-      return message.reply("❌ فقط المالك");
-
     const user = message.mentions.users.first();
     if (!user) return message.reply("منشن شخص");
 
@@ -114,12 +117,14 @@ client.on("messageCreate", async (message) => {
       (db[message.guild.id] || []).filter(id => id !== user.id);
 
     saveDB();
+
     return message.reply(`❌ Admin Removed: ${user.tag}`);
   }
 
   // ================= PERMISSION =================
-  if (!canUse(message))
+  if (!canUse(message)) {
     return message.reply("❌ لا تملك صلاحية");
+  }
 
   // ================= BAN =================
   if (cmd === "ban") {
@@ -198,7 +203,7 @@ client.on("messageCreate", async (message) => {
   // ================= SERVER ICON =================
   if (cmd === "chphoto") {
     const url = args[0];
-    if (!url) return message.reply("حط رابط");
+    if (!url) return message.reply("حط رابط صورة");
 
     await message.guild.setIcon(url);
     return message.reply("✅ Changed Icon");
@@ -206,23 +211,18 @@ client.on("messageCreate", async (message) => {
 
   // ================= OWNER COMMANDS =================
   if (cmd === "offbot") {
-    if (!isOwner(message)) return;
     process.exit();
   }
 
   if (cmd === "hardware") {
-    if (!isOwner(message)) return;
     return message.reply("🛠️ Maintenance Mode");
   }
 
   if (cmd === "ramoff") {
-    if (!isOwner(message)) return;
     return message.reply("⛔ Shutdown Mode");
   }
 
   if (cmd === "lvserver") {
-    if (!isOwner(message)) return;
-
     const id = args[0];
     const guild = client.guilds.cache.get(id);
     if (!guild) return message.reply("Not Found");

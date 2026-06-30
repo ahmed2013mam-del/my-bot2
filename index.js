@@ -25,10 +25,9 @@ const client = new Client({
 
 // ================= CONFIG =================
 const PREFIXES = ["!", "?"];
-
 const OWNER_ID = "1087144363219484683";
 
-// ================= DATABASE =================
+// ================= DB =================
 const FILE = "./admins.json";
 
 let db = fs.existsSync(FILE)
@@ -39,24 +38,22 @@ function saveDB() {
   fs.writeFileSync(FILE, JSON.stringify(db, null, 2));
 }
 
-// ================= PERMISSIONS =================
+// ================= SPAM SYSTEM (NEW ADD ONLY) =================
+const spamMap = new Map();
 
-// سيرفر اونر
+// ================= HELPERS =================
 function isServerOwner(message) {
   return message.guild.ownerId === message.author.id;
 }
 
-// ادمن من نظام البوت (خاص بكل سيرفر)
 function isAdmin(message) {
   return (db[message.guild.id] || []).includes(message.author.id);
 }
 
-// صلاحيات كاملة داخل السيرفر
 function canUse(message) {
   return isServerOwner(message) || isAdmin(message);
 }
 
-// رسالة موحدة
 function noPerm(message) {
   return message.reply("❌ ليس لديك الصلاحية");
 }
@@ -76,8 +73,47 @@ client.on("messageCreate", async (message) => {
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
 
-  // ================= GLOBAL PERMISSION =================
-  if (!canUse(message) && !["help"].includes(cmd)) {
+  // ================= 🔥 ANTI SPAM (NEW ADD ONLY) =================
+  const userId = message.author.id;
+  const now = Date.now();
+
+  if (!spamMap.has(userId)) {
+    spamMap.set(userId, []);
+  }
+
+  const timestamps = spamMap.get(userId);
+  const filtered = timestamps.filter(t => now - t < 5000);
+
+  filtered.push(now);
+  spamMap.set(userId, filtered);
+
+  if (filtered.length >= 5) {
+    const member = message.member;
+
+    if (member && member.moderatable) {
+      await member.timeout(5 * 60 * 1000, "Anti-Spam");
+    }
+
+    spamMap.set(userId, []);
+
+    return message.reply("⛔ لا تسوي سبام (تايم 5 دقائق)");
+  }
+
+  // ================= 💬 AUTO REPLY (NEW ADD ONLY) =================
+  if (message.content === "السلام عليكم") {
+    const last = spamMap.get(userId + "_reply") || 0;
+
+    if (now - last < 5 * 60 * 1000) return;
+
+    spamMap.set(userId + "_reply", now);
+
+    return message.reply(
+      "وعــلــيـكم الــســلــام نــورت/ي الــســيــرفــر❤"
+    );
+  }
+
+  // ================= PERMISSION =================
+  if (!canUse(message) && cmd !== "help") {
     return noPerm(message);
   }
 
@@ -112,7 +148,7 @@ client.on("messageCreate", async (message) => {
       saveDB();
     }
 
-    return message.reply(`✅ تم إضافة ${user.tag} Admin`);
+    return message.reply(`✅ تم إضافة ${user.tag}`);
   }
 
   // ================= REMOVE ADMIN =================
@@ -122,20 +158,20 @@ client.on("messageCreate", async (message) => {
     const user = message.mentions.users.first();
     if (!user) return message.reply("منشن شخص");
 
-    const gid = message.guild.id;
+    db[message.guild.id] =
+      (db[message.guild.id] || []).filter(id => id !== user.id);
 
-    db[gid] = (db[gid] || []).filter(id => id !== user.id);
     saveDB();
 
-    return message.reply(`❌ تم حذف ${user.tag}`);
+    return message.reply(`❌ تم الحذف`);
   }
 
   // ================= LIST ADMINS =================
   if (cmd === "listad") {
     const list = db[message.guild.id] || [];
 
-    if (list.length === 0)
-      return message.reply("❌ لا يوجد ادمنز");
+    if (!list.length)
+      return message.reply("❌ لا يوجد أدمنز");
 
     const users = await Promise.all(
       list.map(async (id) => {
@@ -143,16 +179,15 @@ client.on("messageCreate", async (message) => {
           const u = await client.users.fetch(id);
           return `👤 ${u.tag}`;
         } catch {
-          return `👤 Unknown (${id})`;
+          return `👤 Unknown`;
         }
       })
     );
 
     const embed = new EmbedBuilder()
-      .setTitle("📋 Admin List")
-      .setColor(0x2b2d31)
+      .setTitle("📋 Admins")
       .setDescription(users.join("\n"))
-      .setFooter({ text: `Total: ${list.length}` });
+      .setColor(0x2b2d31);
 
     return message.channel.send({ embeds: [embed] });
   }
@@ -161,9 +196,7 @@ client.on("messageCreate", async (message) => {
   if (cmd === "ban") {
     const member = message.mentions.members.first();
     if (!member) return message.reply("منشن شخص");
-
-    if (!member.bannable)
-      return message.reply("❌ البوت لا يستطيع الحظر");
+    if (!member.bannable) return message.reply("❌ لا يمكن الحظر");
 
     await member.ban();
     return message.reply("🔨 تم الحظر");
@@ -173,9 +206,7 @@ client.on("messageCreate", async (message) => {
   if (cmd === "kick") {
     const member = message.mentions.members.first();
     if (!member) return message.reply("منشن شخص");
-
-    if (!member.kickable)
-      return message.reply("❌ البوت لا يستطيع الطرد");
+    if (!member.kickable) return message.reply("❌ لا يمكن الطرد");
 
     await member.kick();
     return message.reply("👢 تم الطرد");
@@ -240,4 +271,3 @@ client.on("messageCreate", async (message) => {
 });
 
 client.login(process.env.TOKEN);
-      

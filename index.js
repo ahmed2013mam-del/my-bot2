@@ -19,15 +19,14 @@ const client = new Client({
   ]
 });
 
-const prefix = "!";
+// 🟢 MULTI PREFIX
+const prefixes = ["!", "?"];
 
-// 🟢 admins (temporary)
+// 🟢 admins
 const guildAdmins = new Map();
 
-// ❌ no permission
 const noPerm = (msg) => msg.reply("❌ ليس لديك صلاحية");
 
-// 🟢 check permission
 function isAuthorized(message) {
   if (!message.guild) return false;
   if (message.guild.ownerId === message.author.id) return true;
@@ -36,15 +35,15 @@ function isAuthorized(message) {
   return admins?.has(message.author.id);
 }
 
-// ================= READY (FANCY STATUS) =================
+// ================= READY =================
 client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 
   const statuses = [
     "Created by Row Studio",
-    "Managing Servers",
     "NexusCore System",
-    "Watching Discord"
+    "Watching Servers",
+    "Managing Discord"
   ];
 
   let i = 0;
@@ -64,49 +63,36 @@ client.once("ready", () => {
   }, 10000);
 });
 
-// ================= COMMANDS =================
+// ================= MESSAGE =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
-  if (!message.content.startsWith(prefix)) return;
+
+  // 🟢 check prefix (! or ?)
+  const prefix = prefixes.find(p => message.content.startsWith(p));
+  if (!prefix) return;
 
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
 
-  // ================= HELP =================
+  // help بدون صلاحيات
   if (cmd === "help") {
     const embed = new EmbedBuilder()
-      .setTitle("📖 NexusCore Help Menu")
+      .setTitle("📖 NexusCore Help")
       .setDescription("Developed by Row Studios")
       .setColor(0x2b2d31)
       .addFields(
-        {
-          name: "🛡️ Moderation",
-          value: "`!ban` `!kick`"
-        },
-        {
-          name: "📢 Broadcast",
-          value: "`!bc message`"
-        },
-        {
-          name: "🏗️ Create",
-          value: "`!cch` `!cct` `!cct-ch`"
-        },
-        {
-          name: "👑 Admin",
-          value: "`!adminadd` `!rmvadmin`"
-        }
+        { name: "🛡️ Moderation", value: "`ban` `kick`" },
+        { name: "📢 Broadcast", value: "`bc`" },
+        { name: "🏗️ Create", value: "`cch` `cct` `cct-ch`" }
       )
-      .setFooter({ text: "NexusCore System" })
-      .setTimestamp();
+      .setFooter({ text: "NexusCore System" });
 
     return message.channel.send({ embeds: [embed] });
   }
 
-  // ❌ permission gate
-  if (cmd !== "help" && !isAuthorized(message))
-    return noPerm(message);
+  if (!isAuthorized(message)) return noPerm(message);
 
-  // ================= ADMIN ADD =================
+  // ================= ADMIN =================
   if (cmd === "adminadd") {
     if (message.guild.ownerId !== message.author.id)
       return message.reply("❌ فقط الأونر");
@@ -122,7 +108,6 @@ client.on("messageCreate", async (message) => {
     return message.reply(`✅ تم إضافة أدمن: ${user.tag}`);
   }
 
-  // ================= REMOVE ADMIN =================
   if (cmd === "rmvadmin") {
     if (message.guild.ownerId !== message.author.id)
       return message.reply("❌ فقط الأونر");
@@ -160,14 +145,14 @@ client.on("messageCreate", async (message) => {
     const text = args.join(" ");
     if (!text) return message.reply("اكتب رسالة");
 
-    message.guild.members.cache.forEach((m) => {
+    message.guild.members.cache.forEach(m => {
       if (!m.user.bot) m.send(text).catch(() => {});
     });
 
     return message.reply("📢 تم الإرسال");
   }
 
-  // ================= CHANNEL =================
+  // ================= CREATE CHANNEL =================
   if (cmd === "cch") {
     const name = args.join("-");
     if (!name) return message.reply("اكتب اسم");
@@ -180,7 +165,7 @@ client.on("messageCreate", async (message) => {
     return message.reply("✅ تم إنشاء روم");
   }
 
-  // ================= CATEGORY =================
+  // ================= CREATE CATEGORY =================
   if (cmd === "cct") {
     const name = args.join(" ");
     if (!name) return message.reply("اكتب اسم");
@@ -193,7 +178,7 @@ client.on("messageCreate", async (message) => {
     return message.reply("📁 تم إنشاء كاتاجوري");
   }
 
-  // ================= CATEGORY + CHANNEL =================
+  // ================= CAT + CHANNEL =================
   if (cmd === "cct-ch") {
     const input = args.join(" ");
     const [cat, room] = input.split("|");

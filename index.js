@@ -2,7 +2,8 @@ const {
   Client,
   GatewayIntentBits,
   PermissionsBitField,
-  ChannelType
+  ChannelType,
+  EmbedBuilder
 } = require("discord.js");
 
 const express = require("express");
@@ -21,22 +22,30 @@ const client = new Client({
 
 const prefix = "!";
 
-// admin storage (temporary - restart = reset)
+// 🟢 صلاحيات الأدمن (مؤقتة)
 const guildAdmins = new Map();
 
-function isOwnerOrAdmin(message) {
+// 🔥 تحقق صلاحيات
+function isAuthorized(message) {
   if (!message.guild) return false;
-  if (message.guild.ownerId === message.author.id) return true;
+
+  if (message.guild.ownerId === message.author.id)
+    return true;
 
   const admins = guildAdmins.get(message.guild.id);
   return admins?.has(message.author.id);
+}
+
+// ❌ رسالة منع عامة
+function noPerm(message) {
+  return message.reply("❌ ليس لديك صلاحية");
 }
 
 client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// ================== COMMAND HANDLER ==================
+// ================= COMMAND HANDLER =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
   if (!message.content.startsWith(prefix)) return;
@@ -45,17 +54,38 @@ client.on("messageCreate", async (message) => {
   const cmd = args.shift().toLowerCase();
 
   // ❌ منع غير المصرح لهم (ما عدا help)
-  if (cmd !== "help" && !isOwnerOrAdmin(message)) return;
+  if (cmd !== "help" && !isAuthorized(message))
+    return noPerm(message);
 
   // ================= HELP =================
   if (cmd === "help") {
-    return message.reply(
-`📌 أوامر البوت:
-!ban !kick !bc !cch !cct !cct-ch !adminadd !rmvadmin`
-    );
+    const embed = new EmbedBuilder()
+      .setTitle("📖 قائمة أوامر البوت")
+      .setDescription("Developed by Row studios")
+      .setColor(0x2b2d31)
+      .addFields(
+        {
+          name: "🛡️ الإدارة",
+          value:
+            "`!ban @user`\n`!kick @user`\n`!adminadd @user`\n`!rmvadmin @user`"
+        },
+        {
+          name: "📢 البث",
+          value: "`!bc message`"
+        },
+        {
+          name: "🏗️ الإنشاء",
+          value:
+            "`!cch name`\n`!cct name`\n`!cct-ch cat|room`"
+        }
+      )
+      .setFooter({ text: "Developed by Row studios" })
+      .setTimestamp();
+
+    return message.channel.send({ embeds: [embed] });
   }
 
-  // ================= ADMIN ADD =================
+  // ================= ADD ADMIN =================
   if (cmd === "adminadd") {
     if (message.guild.ownerId !== message.author.id)
       return message.reply("❌ فقط الأونر");
@@ -88,28 +118,26 @@ client.on("messageCreate", async (message) => {
   if (cmd === "ban") {
     const user = message.mentions.members.first();
     if (!user) return message.reply("منشن شخص");
-
     if (!user.bannable) return message.reply("❌ ما أقدر أبنده");
 
     await user.ban();
-    return message.reply("🔨 تم الباند");
+    return message.reply("🔨 تم الحظر");
   }
 
   // ================= KICK =================
   if (cmd === "kick") {
     const user = message.mentions.members.first();
     if (!user) return message.reply("منشن شخص");
-
     if (!user.kickable) return message.reply("❌ ما أقدر أكيكة");
 
     await user.kick();
-    return message.reply("👢 تم الكيك");
+    return message.reply("👢 تم الطرد");
   }
 
   // ================= BROADCAST =================
   if (cmd === "bc") {
     const text = args.join(" ");
-    if (!text) return message.reply("اكتب الرسالة");
+    if (!text) return message.reply("اكتب رسالة");
 
     message.guild.members.cache.forEach((m) => {
       if (!m.user.bot) m.send(text).catch(() => {});
@@ -123,12 +151,12 @@ client.on("messageCreate", async (message) => {
     const name = args.join("-");
     if (!name) return message.reply("اكتب اسم");
 
-    const ch = await message.guild.channels.create({
+    await message.guild.channels.create({
       name,
       type: ChannelType.GuildText
     });
 
-    return message.reply(`✅ تم إنشاء ${ch}`);
+    return message.reply("✅ تم إنشاء روم");
   }
 
   // ================= CREATE CATEGORY =================
@@ -147,15 +175,15 @@ client.on("messageCreate", async (message) => {
   // ================= CATEGORY + CHANNEL =================
   if (cmd === "cct-ch") {
     const input = args.join(" ");
-    const [catName, chName] = input.split("|");
+    const [cat, room] = input.split("|");
 
     const category = await message.guild.channels.create({
-      name: catName || "category",
+      name: cat || "category",
       type: ChannelType.GuildCategory
     });
 
     await message.guild.channels.create({
-      name: (chName || "room").toLowerCase(),
+      name: (room || "room").toLowerCase(),
       type: ChannelType.GuildText,
       parent: category.id
     });

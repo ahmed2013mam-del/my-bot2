@@ -1,18 +1,19 @@
 const {
   Client,
   GatewayIntentBits,
-  ChannelType,
-  EmbedBuilder
+  EmbedBuilder,
+  ChannelType
 } = require("discord.js");
 
 const express = require("express");
 const fs = require("fs");
 
+// ================= EXPRESS =================
 const app = express();
 app.get("/", (req, res) => res.send("Bot Online"));
 app.listen(process.env.PORT || 3000);
 
-// ================= CLIENT =================
+// ================= BOT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -26,7 +27,6 @@ const client = new Client({
 const PREFIXES = ["!", "?"];
 
 const OWNER_ID = "1087144363219484683";
-const CONTROL_GUILD = "1521376881746907177";
 
 // ================= DATABASE =================
 const FILE = "./admins.json";
@@ -39,25 +39,26 @@ function saveDB() {
   fs.writeFileSync(FILE, JSON.stringify(db, null, 2));
 }
 
-// ================= HELPERS =================
-function isControlGuild(message) {
-  return message.guild.id === CONTROL_GUILD;
+// ================= PERMISSIONS =================
+
+// سيرفر اونر
+function isServerOwner(message) {
+  return message.guild.ownerId === message.author.id;
 }
 
-function isOwner(message) {
-  return message.author.id === OWNER_ID && isControlGuild(message);
-}
-
+// ادمن من نظام البوت (خاص بكل سيرفر)
 function isAdmin(message) {
   return (db[message.guild.id] || []).includes(message.author.id);
 }
 
+// صلاحيات كاملة داخل السيرفر
 function canUse(message) {
-  // في سيرفر التحكم = أنت كل شيء
-  if (isControlGuild(message) && message.author.id === OWNER_ID) return true;
+  return isServerOwner(message) || isAdmin(message);
+}
 
-  // باقي السيرفرات = Admin فقط
-  return isAdmin(message);
+// رسالة موحدة
+function noPerm(message) {
+  return message.reply("❌ ليس لديك الصلاحية");
 }
 
 // ================= READY =================
@@ -75,71 +76,39 @@ client.on("messageCreate", async (message) => {
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
 
-  // ================= NO PERMISSION =================
+  // ================= GLOBAL PERMISSION =================
   if (!canUse(message) && !["help"].includes(cmd)) {
-    return message.reply("❌ ليس لديك صلاحية");
+    return noPerm(message);
   }
 
   // ================= HELP =================
   if (cmd === "help") {
     const embed = new EmbedBuilder()
-      .setTitle("📖 NexusCore Panel")
+      .setTitle("📖 Control Panel")
       .setColor(0x2b2d31)
-      .setDescription("Developed by Row Studio")
       .addFields(
-        {
-          name: "🛡️ Moderation",
-          value: "`ban` `kick`",
-          inline: true
-        },
-        {
-          name: "📢 Tools",
-          value: "`bc`",
-          inline: true
-        },
-        {
-          name: "🏗️ Create",
-          value: "`cch` `cct` `cct-ch`",
-          inline: false
-        },
-        {
-          name: "🎨 Roles",
-          value: "`crl` `crlmulti`",
-          inline: false
-        },
-        {
-          name: "👤 Admin System",
-          value: "`addadmin` `rmvadmin` `listad`",
-          inline: false
-        }
+        { name: "🛡 Moderation", value: "`ban` `kick`" },
+        { name: "📢 Tools", value: "`bc`" },
+        { name: "🏗 Create", value: "`cch` `cct` `cct-ch`" },
+        { name: "👤 Admin System", value: "`addadmin` `rmvadmin` `listad`" }
       );
-
-    // أوامر التحكم تظهر فقط في سيرفر التحكم
-    if (isControlGuild(message)) {
-      embed.addFields({
-        name: "⚙️ Control Server Only",
-        value: "`offbot` `hardware` `ramoff` `lvserver`"
-      });
-    }
 
     return message.channel.send({ embeds: [embed] });
   }
 
   // ================= ADD ADMIN =================
   if (cmd === "addadmin") {
-    if (!isControlGuild(message))
-      return message.reply("❌ ليس لديك صلاحية");
-
-    if (message.author.id !== OWNER_ID)
-      return message.reply("❌ ليس لديك صلاحية");
+    if (!isServerOwner(message)) return noPerm(message);
 
     const user = message.mentions.users.first();
     if (!user) return message.reply("منشن شخص");
 
-    if (!db[message.guild.id]) db[message.guild.id] = [];
+    const gid = message.guild.id;
 
-    if (!db[message.guild.id].includes(user.id)) {
-      db[message.guild.id].push(user.id);
+    if (!db[gid]) db[gid] = [];
+
+    if (!db[gid].includes(user.id)) {
+      db[gid].push(user.id);
       saveDB();
     }
 
@@ -148,26 +117,28 @@ client.on("messageCreate", async (message) => {
 
   // ================= REMOVE ADMIN =================
   if (cmd === "rmvadmin") {
+    if (!isServerOwner(message)) return noPerm(message);
+
     const user = message.mentions.users.first();
     if (!user) return message.reply("منشن شخص");
 
-    db[message.guild.id] =
-      (db[message.guild.id] || []).filter(id => id !== user.id);
+    const gid = message.guild.id;
 
+    db[gid] = (db[gid] || []).filter(id => id !== user.id);
     saveDB();
 
-    return message.reply(`❌ تم حذف ${user.tag} من الأدمن`);
+    return message.reply(`❌ تم حذف ${user.tag}`);
   }
 
   // ================= LIST ADMINS =================
   if (cmd === "listad") {
-    const admins = db[message.guild.id] || [];
+    const list = db[message.guild.id] || [];
 
-    if (admins.length === 0)
-      return message.reply("❌ لا يوجد أدمنز");
+    if (list.length === 0)
+      return message.reply("❌ لا يوجد ادمنز");
 
-    const list = await Promise.all(
-      admins.map(async (id) => {
+    const users = await Promise.all(
+      list.map(async (id) => {
         try {
           const u = await client.users.fetch(id);
           return `👤 ${u.tag}`;
@@ -180,29 +151,33 @@ client.on("messageCreate", async (message) => {
     const embed = new EmbedBuilder()
       .setTitle("📋 Admin List")
       .setColor(0x2b2d31)
-      .setDescription(list.join("\n"))
-      .setFooter({ text: `Total: ${admins.length}` });
+      .setDescription(users.join("\n"))
+      .setFooter({ text: `Total: ${list.length}` });
 
     return message.channel.send({ embeds: [embed] });
   }
 
   // ================= BAN =================
   if (cmd === "ban") {
-    const user = message.mentions.members.first();
-    if (!user) return message.reply("منشن شخص");
-    if (!user.bannable) return message.reply("❌ لا يمكن حظره");
+    const member = message.mentions.members.first();
+    if (!member) return message.reply("منشن شخص");
 
-    await user.ban();
+    if (!member.bannable)
+      return message.reply("❌ البوت لا يستطيع الحظر");
+
+    await member.ban();
     return message.reply("🔨 تم الحظر");
   }
 
   // ================= KICK =================
   if (cmd === "kick") {
-    const user = message.mentions.members.first();
-    if (!user) return message.reply("منشن شخص");
-    if (!user.kickable) return message.reply("❌ لا يمكن طرده");
+    const member = message.mentions.members.first();
+    if (!member) return message.reply("منشن شخص");
 
-    await user.kick();
+    if (!member.kickable)
+      return message.reply("❌ البوت لا يستطيع الطرد");
+
+    await member.kick();
     return message.reply("👢 تم الطرد");
   }
 
@@ -265,3 +240,4 @@ client.on("messageCreate", async (message) => {
 });
 
 client.login(process.env.TOKEN);
+      

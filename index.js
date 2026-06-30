@@ -1,14 +1,13 @@
 const {
   Client,
   GatewayIntentBits,
-  PermissionsBitField,
   ChannelType,
   EmbedBuilder
 } = require("discord.js");
 
 const express = require("express");
 const app = express();
-app.get("/", (req, res) => res.send("Bot is alive"));
+app.get("/", (req, res) => res.send("NexusCore is alive"));
 app.listen(process.env.PORT || 3000);
 
 const client = new Client({
@@ -22,30 +21,50 @@ const client = new Client({
 
 const prefix = "!";
 
-// 🟢 صلاحيات الأدمن (مؤقتة)
+// 🟢 admins (temporary)
 const guildAdmins = new Map();
 
-// 🔥 تحقق صلاحيات
+// ❌ no permission
+const noPerm = (msg) => msg.reply("❌ ليس لديك صلاحية");
+
+// 🟢 check permission
 function isAuthorized(message) {
   if (!message.guild) return false;
-
-  if (message.guild.ownerId === message.author.id)
-    return true;
+  if (message.guild.ownerId === message.author.id) return true;
 
   const admins = guildAdmins.get(message.guild.id);
   return admins?.has(message.author.id);
 }
 
-// ❌ رسالة منع عامة
-function noPerm(message) {
-  return message.reply("❌ ليس لديك صلاحية");
-}
-
+// ================= READY (FANCY STATUS) =================
 client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
+
+  const statuses = [
+    "Created by Row Studio",
+    "Managing Servers",
+    "NexusCore System",
+    "Watching Discord"
+  ];
+
+  let i = 0;
+
+  client.user.setPresence({
+    activities: [{ name: statuses[i], type: 3 }],
+    status: "dnd"
+  });
+
+  setInterval(() => {
+    i = (i + 1) % statuses.length;
+
+    client.user.setPresence({
+      activities: [{ name: statuses[i], type: 3 }],
+      status: "dnd"
+    });
+  }, 10000);
 });
 
-// ================= COMMAND HANDLER =================
+// ================= COMMANDS =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
   if (!message.content.startsWith(prefix)) return;
@@ -53,39 +72,41 @@ client.on("messageCreate", async (message) => {
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
 
-  // ❌ منع غير المصرح لهم (ما عدا help)
-  if (cmd !== "help" && !isAuthorized(message))
-    return noPerm(message);
-
   // ================= HELP =================
   if (cmd === "help") {
     const embed = new EmbedBuilder()
-      .setTitle("📖 قائمة أوامر البوت")
-      .setDescription("Developed by Row studios")
+      .setTitle("📖 NexusCore Help Menu")
+      .setDescription("Developed by Row Studios")
       .setColor(0x2b2d31)
       .addFields(
         {
-          name: "🛡️ الإدارة",
-          value:
-            "`!ban @user`\n`!kick @user`\n`!adminadd @user`\n`!rmvadmin @user`"
+          name: "🛡️ Moderation",
+          value: "`!ban` `!kick`"
         },
         {
-          name: "📢 البث",
+          name: "📢 Broadcast",
           value: "`!bc message`"
         },
         {
-          name: "🏗️ الإنشاء",
-          value:
-            "`!cch name`\n`!cct name`\n`!cct-ch cat|room`"
+          name: "🏗️ Create",
+          value: "`!cch` `!cct` `!cct-ch`"
+        },
+        {
+          name: "👑 Admin",
+          value: "`!adminadd` `!rmvadmin`"
         }
       )
-      .setFooter({ text: "Developed by Row studios" })
+      .setFooter({ text: "NexusCore System" })
       .setTimestamp();
 
     return message.channel.send({ embeds: [embed] });
   }
 
-  // ================= ADD ADMIN =================
+  // ❌ permission gate
+  if (cmd !== "help" && !isAuthorized(message))
+    return noPerm(message);
+
+  // ================= ADMIN ADD =================
   if (cmd === "adminadd") {
     if (message.guild.ownerId !== message.author.id)
       return message.reply("❌ فقط الأونر");
@@ -118,7 +139,7 @@ client.on("messageCreate", async (message) => {
   if (cmd === "ban") {
     const user = message.mentions.members.first();
     if (!user) return message.reply("منشن شخص");
-    if (!user.bannable) return message.reply("❌ ما أقدر أبنده");
+    if (!user.bannable) return message.reply("❌ لا يمكن حظره");
 
     await user.ban();
     return message.reply("🔨 تم الحظر");
@@ -128,13 +149,13 @@ client.on("messageCreate", async (message) => {
   if (cmd === "kick") {
     const user = message.mentions.members.first();
     if (!user) return message.reply("منشن شخص");
-    if (!user.kickable) return message.reply("❌ ما أقدر أكيكة");
+    if (!user.kickable) return message.reply("❌ لا يمكن طرده");
 
     await user.kick();
     return message.reply("👢 تم الطرد");
   }
 
-  // ================= BROADCAST =================
+  // ================= BC =================
   if (cmd === "bc") {
     const text = args.join(" ");
     if (!text) return message.reply("اكتب رسالة");
@@ -146,7 +167,7 @@ client.on("messageCreate", async (message) => {
     return message.reply("📢 تم الإرسال");
   }
 
-  // ================= CREATE CHANNEL =================
+  // ================= CHANNEL =================
   if (cmd === "cch") {
     const name = args.join("-");
     if (!name) return message.reply("اكتب اسم");
@@ -159,7 +180,7 @@ client.on("messageCreate", async (message) => {
     return message.reply("✅ تم إنشاء روم");
   }
 
-  // ================= CREATE CATEGORY =================
+  // ================= CATEGORY =================
   if (cmd === "cct") {
     const name = args.join(" ");
     if (!name) return message.reply("اكتب اسم");

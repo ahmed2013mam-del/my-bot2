@@ -8,12 +8,10 @@ const {
 const express = require("express");
 const fs = require("fs");
 
-// ================= EXPRESS =================
 const app = express();
 app.get("/", (req, res) => res.send("Bot Online"));
 app.listen(process.env.PORT || 3000);
 
-// ================= BOT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -23,9 +21,9 @@ const client = new Client({
   ]
 });
 
-// ================= CONFIG =================
 const PREFIXES = ["!", "?"];
 const OWNER_ID = "1087144363219484683";
+const CONTROL_GUILD = "1521376881746907177";
 
 // ================= DB =================
 const FILE = "./admins.json";
@@ -38,10 +36,14 @@ function saveDB() {
   fs.writeFileSync(FILE, JSON.stringify(db, null, 2));
 }
 
-// ================= 🔥 NEW ONLY ADD (GREETING SYSTEM) =================
+// ================= GREET SYSTEM =================
 const greetCooldown = new Map();
 
-// ================= HELPERS =================
+// ================= PERMISSIONS =================
+function isControlGuild(message) {
+  return message.guild.id === CONTROL_GUILD;
+}
+
 function isServerOwner(message) {
   return message.guild.ownerId === message.author.id;
 }
@@ -51,6 +53,10 @@ function isAdmin(message) {
 }
 
 function canUse(message) {
+  // سيرفر التحكم = أنت فقط
+  if (isControlGuild(message) && message.author.id === OWNER_ID) return true;
+
+  // باقي السيرفرات = Owner + Admin
   return isServerOwner(message) || isAdmin(message);
 }
 
@@ -70,17 +76,14 @@ client.on("messageCreate", async (message) => {
   const userId = message.author.id;
   const now = Date.now();
 
-  // ================= 💬 GREETING SYSTEM (ONLY ADD) =================
+  // ================= GREETING =================
   if (message.content.trim() === "السلام عليكم") {
     const last = greetCooldown.get(userId) || 0;
-
     if (now - last < 5 * 60 * 1000) return;
 
     greetCooldown.set(userId, now);
 
-    return message.reply(
-      "وعــلــيـكم الــســلــام نــورت/ي الــســيــرفــر❤"
-    );
+    return message.reply("وعــلــيـكم الــســلــام نــورت/ي الــســيــرفــر❤");
   }
 
   const prefix = PREFIXES.find(p => message.content.startsWith(p));
@@ -103,13 +106,21 @@ client.on("messageCreate", async (message) => {
         { name: "🛡 Moderation", value: "`ban` `kick`" },
         { name: "📢 Tools", value: "`bc`" },
         { name: "🏗 Create", value: "`cch` `cct` `cct-ch`" },
+        { name: "🎨 Server Tools", value: "`chname` `chphoto`" },
         { name: "👤 Admin System", value: "`addadmin` `rmvadmin` `listad`" }
       );
+
+    if (isControlGuild(message)) {
+      embed.addFields({
+        name: "⚙️ CONTROL SERVER",
+        value: "`offbot` `hardware` `ramoff`"
+      });
+    }
 
     return message.channel.send({ embeds: [embed] });
   }
 
-  // ================= ADD ADMIN =================
+  // ================= ADMIN SYSTEM =================
   if (cmd === "addadmin") {
     if (!isServerOwner(message)) return noPerm(message);
 
@@ -119,7 +130,6 @@ client.on("messageCreate", async (message) => {
     const gid = message.guild.id;
 
     if (!db[gid]) db[gid] = [];
-
     if (!db[gid].includes(user.id)) {
       db[gid].push(user.id);
       saveDB();
@@ -128,7 +138,6 @@ client.on("messageCreate", async (message) => {
     return message.reply(`✅ تم إضافة ${user.tag}`);
   }
 
-  // ================= REMOVE ADMIN =================
   if (cmd === "rmvadmin") {
     if (!isServerOwner(message)) return noPerm(message);
 
@@ -140,15 +149,12 @@ client.on("messageCreate", async (message) => {
 
     saveDB();
 
-    return message.reply(`❌ تم الحذف`);
+    return message.reply("❌ تم الحذف");
   }
 
-  // ================= LIST ADMINS =================
   if (cmd === "listad") {
     const list = db[message.guild.id] || [];
-
-    if (!list.length)
-      return message.reply("❌ لا يوجد أدمنز");
+    if (!list.length) return message.reply("❌ لا يوجد أدمنز");
 
     const users = await Promise.all(
       list.map(async (id) => {
@@ -161,31 +167,32 @@ client.on("messageCreate", async (message) => {
       })
     );
 
-    const embed = new EmbedBuilder()
-      .setTitle("📋 Admins")
-      .setDescription(users.join("\n"))
-      .setColor(0x2b2d31);
-
-    return message.channel.send({ embeds: [embed] });
+    return message.channel.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("📋 Admin List")
+          .setDescription(users.join("\n"))
+          .setColor(0x2b2d31)
+      ]
+    });
   }
 
-  // ================= BAN =================
+  // ================= MODERATION =================
   if (cmd === "ban") {
-    const member = message.mentions.members.first();
-    if (!member) return message.reply("منشن شخص");
-    if (!member.bannable) return message.reply("❌ لا يمكن الحظر");
+    const m = message.mentions.members.first();
+    if (!m) return message.reply("منشن شخص");
+    if (!m.bannable) return message.reply("❌ لا يمكن الحظر");
 
-    await member.ban();
+    await m.ban();
     return message.reply("🔨 تم الحظر");
   }
 
-  // ================= KICK =================
   if (cmd === "kick") {
-    const member = message.mentions.members.first();
-    if (!member) return message.reply("منشن شخص");
-    if (!member.kickable) return message.reply("❌ لا يمكن الطرد");
+    const m = message.mentions.members.first();
+    if (!m) return message.reply("منشن شخص");
+    if (!m.kickable) return message.reply("❌ لا يمكن الطرد");
 
-    await member.kick();
+    await m.kick();
     return message.reply("👢 تم الطرد");
   }
 
@@ -201,7 +208,7 @@ client.on("messageCreate", async (message) => {
     return message.reply("📢 تم الإرسال");
   }
 
-  // ================= CREATE CHANNEL =================
+  // ================= CREATE =================
   if (cmd === "cch") {
     const name = args.join("-");
     if (!name) return message.reply("اكتب اسم");
@@ -214,7 +221,6 @@ client.on("messageCreate", async (message) => {
     return message.reply("✅ تم إنشاء روم");
   }
 
-  // ================= CREATE CATEGORY =================
   if (cmd === "cct") {
     const name = args.join(" ");
     if (!name) return message.reply("اكتب اسم");
@@ -227,7 +233,6 @@ client.on("messageCreate", async (message) => {
     return message.reply("📁 تم إنشاء كاتاجوري");
   }
 
-  // ================= CATEGORY + CHANNEL =================
   if (cmd === "cct-ch") {
     const input = args.join(" ");
     const [cat, room] = input.split("|");
@@ -244,6 +249,36 @@ client.on("messageCreate", async (message) => {
     });
 
     return message.reply("✅ تم إنشاء كاتاجوري + روم");
+  }
+
+  // ================= SERVER TOOLS (رجعت زي ما طلبت) =================
+  if (cmd === "chname") {
+    const name = args.join(" ");
+    if (!name) return message.reply("اكتب اسم");
+
+    await message.guild.setName(name);
+    return message.reply("✅ تم تغيير الاسم");
+  }
+
+  if (cmd === "chphoto") {
+    const url = args[0];
+    if (!url) return message.reply("حط رابط صورة");
+
+    await message.guild.setIcon(url);
+    return message.reply("✅ تم تغيير الصورة");
+  }
+
+  // ================= CONTROL COMMANDS =================
+  if (cmd === "offbot" && isControlGuild(message)) {
+    process.exit();
+  }
+
+  if (cmd === "hardware" && isControlGuild(message)) {
+    return message.reply("🛠️ Maintenance");
+  }
+
+  if (cmd === "ramoff" && isControlGuild(message)) {
+    return message.reply("⛔ Shutdown Mode");
   }
 });
 

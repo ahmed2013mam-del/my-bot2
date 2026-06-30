@@ -7,7 +7,7 @@ const {
 
 const express = require("express");
 const app = express();
-app.get("/", (req, res) => res.send("NexusCore is alive"));
+app.get("/", (req, res) => res.send("NexusCore Online"));
 app.listen(process.env.PORT || 3000);
 
 const client = new Client({
@@ -19,14 +19,40 @@ const client = new Client({
   ]
 });
 
-// 🟢 MULTI PREFIX
+// ================= CONFIG =================
 const prefixes = ["!", "?"];
 
-// 🟢 admins
+const CONTROL_GUILD = "1521376881746907177";
+const OWNER_ID = "1087144363219484683";
+
+let botState = "online"; 
+// online | off | maintenance | ramoff
+
 const guildAdmins = new Map();
 
-const noPerm = (msg) => msg.reply("❌ ليس لديك صلاحية");
+// ================= STATUS =================
+client.once("ready", () => {
+  console.log(`Logged in as ${client.user.tag}`);
 
+  const statuses = [
+    "Created by Row Studio",
+    "NexusCore System",
+    "Watching Servers"
+  ];
+
+  let i = 0;
+
+  setInterval(() => {
+    client.user.setPresence({
+      activities: [{ name: statuses[i], type: 3 }],
+      status: botState === "off" ? "invisible" : "dnd"
+    });
+
+    i = (i + 1) % statuses.length;
+  }, 10000);
+});
+
+// ================= PERMISSION =================
 function isAuthorized(message) {
   if (!message.guild) return false;
   if (message.guild.ownerId === message.author.id) return true;
@@ -35,90 +61,106 @@ function isAuthorized(message) {
   return admins?.has(message.author.id);
 }
 
-// ================= READY =================
-client.once("ready", () => {
-  console.log(`Logged in as ${client.user.tag}`);
-
-  const statuses = [
-    "Created by Row Studio",
-    "NexusCore System",
-    "Watching Servers",
-    "Managing Discord"
-  ];
-
-  let i = 0;
-
-  client.user.setPresence({
-    activities: [{ name: statuses[i], type: 3 }],
-    status: "dnd"
-  });
-
-  setInterval(() => {
-    i = (i + 1) % statuses.length;
-
-    client.user.setPresence({
-      activities: [{ name: statuses[i], type: 3 }],
-      status: "dnd"
-    });
-  }, 10000);
-});
+function noPerm(message) {
+  return message.reply("❌ ليس لديك صلاحية");
+}
 
 // ================= MESSAGE =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  // 🟢 check prefix (! or ?)
   const prefix = prefixes.find(p => message.content.startsWith(p));
   if (!prefix) return;
 
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
 
-  // help بدون صلاحيات
-  if (cmd === "help") {
-    const embed = new EmbedBuilder()
-      .setTitle("📖 NexusCore Help")
-      .setDescription("Developed by Row Studios")
-      .setColor(0x2b2d31)
-      .addFields(
-        { name: "🛡️ Moderation", value: "`ban` `kick`" },
-        { name: "📢 Broadcast", value: "`bc`" },
-        { name: "🏗️ Create", value: "`cch` `cct` `cct-ch`" }
-      )
-      .setFooter({ text: "NexusCore System" });
-
-    return message.channel.send({ embeds: [embed] });
+  // ❌ لو البوت في صيانة
+  if (botState === "maintenance") {
+    return message.reply("🛠️ البوت في صيانة حالياً");
   }
 
+  // ================= HELP =================
+if (cmd === "help") {
+  const embed = new EmbedBuilder()
+    .setTitle("📖 NexusCore Control Panel")
+    .setDescription("### Developed by Row Studios")
+    .setColor(0x2b2d31)
+    .addFields(
+      { name: "🛡️ Moderation", value: "`ban` `kick`", inline: true },
+      { name: "📢 Broadcast", value: "`bc`", inline: true },
+      { name: "🏗️ Create", value: "`cch` `cct` `cct-ch`", inline: false }
+    )
+    .setFooter({ text: "Nexus System" })
+    .setTimestamp();
+
+  // أوامر التحكم تظهر فقط في سيرفر التحكم
+  if (message.guild.id === CONTROL_GUILD) {
+    embed.addFields({
+      name: "👑 Owner Control",
+      value: "`LvServer`\n`offbot`\n`Hardware`\n`Ramoff`",
+      inline: false
+    });
+  }
+
+  return message.channel.send({ embeds: [embed] });
+}
+
+  // ================= CONTROL ONLY SERVER =================
+  const isControl = message.guild.id === CONTROL_GUILD;
+
+  // ================= OFFBOT =================
+if (cmd === "offbot") {
+
+  // يعمل فقط في سيرفر التحكم
+  if (!isControl)
+    return message.reply("❌ هذا الأمر يعمل فقط في سيرفر التحكم.");
+
+  // لا يستطيع استخدامه إلا مالك البوت
+  if (message.author.id !== OWNER_ID)
+    return message.reply("❌ هذا الأمر مخصص لمالك البوت فقط.");
+
+  botState = "off";
+
+  return message.reply(
+    "✅ تم تفعيل وضع BlackList.\n\n❌ لا يمكنك استخدام الصلاحيات، السيرفر بلاك ليست."
+  );
+}
+
+  // ================= HARDWARE =================
+  if (cmd === "hardware") {
+    if (!isControl)
+      return message.reply("❌ لا يمكنك استخدام الصلاحيات , السيرفر بلاك ليست");
+
+    botState = "maintenance";
+    return message.reply("🛠️ البوت في صيانه");
+  }
+
+  // ================= RAMOFF =================
+  if (cmd === "ramoff") {
+    if (!isControl)
+      return message.reply("❌ لا يمكنك استخدام الصلاحيات , السيرفر بلاك ليست");
+
+    botState = "ramoff";
+    return message.reply("⛔ تم اطفاء البوت رسمياً");
+  }
+
+  // ================= LVSERVER =================
+  if (cmd === "lvserver") {
+    if (!isControl)
+      return message.reply("❌ هذا السيرفر ليس سيرفر التحكم");
+
+    await message.guild.leave();
+    return;
+  }
+
+  // ================= BLOCK IF OFF =================
+  if (botState === "off") {
+    return message.reply("⛔ البوت متوقف حالياً");
+  }
+
+  // ================= NORMAL PERMISSION =================
   if (!isAuthorized(message)) return noPerm(message);
-
-  // ================= ADMIN =================
-  if (cmd === "adminadd") {
-    if (message.guild.ownerId !== message.author.id)
-      return message.reply("❌ فقط الأونر");
-
-    const user = message.mentions.users.first();
-    if (!user) return message.reply("منشن شخص");
-
-    if (!guildAdmins.has(message.guild.id))
-      guildAdmins.set(message.guild.id, new Set());
-
-    guildAdmins.get(message.guild.id).add(user.id);
-
-    return message.reply(`✅ تم إضافة أدمن: ${user.tag}`);
-  }
-
-  if (cmd === "rmvadmin") {
-    if (message.guild.ownerId !== message.author.id)
-      return message.reply("❌ فقط الأونر");
-
-    const user = message.mentions.users.first();
-    if (!user) return message.reply("منشن شخص");
-
-    guildAdmins.get(message.guild.id)?.delete(user.id);
-
-    return message.reply(`❌ تم إزالة الأدمن: ${user.tag}`);
-  }
 
   // ================= BAN =================
   if (cmd === "ban") {
@@ -178,7 +220,7 @@ client.on("messageCreate", async (message) => {
     return message.reply("📁 تم إنشاء كاتاجوري");
   }
 
-  // ================= CAT + CHANNEL =================
+  // ================= CAT + ROOM =================
   if (cmd === "cct-ch") {
     const input = args.join(" ");
     const [cat, room] = input.split("|");
